@@ -1,0 +1,268 @@
+#!/usr/bin/env python3
+"""
+jsony-reader — append-only wiki log manager.
+
+Manages {Project}/wiki/.system/audit.log.json. JSONY (jsony_core) is used as
+the tolerant parse path for inbound `add` payloads (trailing commas, comments,
+unquoted-ish input are normalized before storage). The log file itself is
+stored as strict JSON so other tooling can read it.
+
+Commands:
+    last [N]                     show N most recent entries (default 5)
+    list [--limit N] [--json]    list entries (oldest->newest)
+    add '<json>'                 append an entry (arg or stdin)
+    validate                     check every entry against the schema
+    summary                      aggregate statistics
+    init                         create an empty log file
+
+Global:
+    --path <dir>                 project root (default: cwd)
+                                 log lives at <dir>/wiki/.system/audit.log.json
+"""
+
+import sys
+import os
+import json
+import argparse
+from datetime import datetime
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+try:
+    import jsony_core
+except Exception:  # pragma: no cover
+    jsony_core = None
+
+LOG_RELPATH = os.path.join("wiki", ".system", "audit.log.json")
+
+REQUIRED_FIELDS = ("date", "title")
+KNOWN_TYPES = {"init", "add", "fix", "update", "feature", "implement",
+               "ingest", "manual"}
+
+
+def log_path(project):
+    return os.path.join(project, LOG_RELPATH)
+
+
+def empty_log():
+    return {
+        "meta": {
+            "description": "Wiki append-only audit log",
+            "format": "JSON append-only log",
+            "version": 1,
+        },
+        "entries": [],
+    }
+
+
+def load_log(project):
+    p = log_path(project)
+    if not os.path.exists(p):
+        raise SystemExit("error: no log at %s (run `init` first)" % p)
+    with open(p, "r", encoding="utf-8") as f:
+        text = f.read()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        # fall back to the tolerant JSONY parser
+        if jsony_core is None:
+            raise
+        return jsony_core.loads(text)
+
+
+def save_log(project, data):
+    p = log_path(project)
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    tmp = p + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+        f.write("\n")
+    os.replace(tmp, p)
+
+
+def parse_entry(raw):
+    """Parse an inbound entry via JSONY first, then strict JSON."""
+    raw = raw.strip()
+    if not raw:
+        raise SystemExit("error: empty entry")
+    if jsony_core is not None:
+        try:
+            return jsony_core.loads(raw)
+        except Exception:
+            pass
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise SystemExit("error: could not parse entry: %s" % e)
+
+
+def fmt_entry(e):
+    date = e.get("date", "????-??-??")
+    title = e.get("title", "(no title)")
+    typ = e.get("type") or e.get("operation") or "-"
+    status = e.get("status", "")
+    line = "%s  [%s]  %s" % (date, typ, title)
+    if status:
+        line += "  (%s)" % status
+    summary = e.get("summary") or e.get("notes")
+    if summary:
+        line += "\n            %s" % summary
+    return line
+
+
+# ---- commands ----
+
+def cmd_init(args):
+    p = log_path(args.path)
+    if os.path.exists(p) and not args.force:
+        raise SystemExit("error: log already exists at %s (use --force)" % p)
+    data = empty_log()
+    data["entries"].append({
+        "date": datetime.now().strftime("%Y-%m-%d"),
+        "title": "wiki log initialized",
+        "type": "init",
+        "summary": "created audit.log.json",
+    })
+    save_log(args.path, data)
+    print("initialized %s" % p)
+
+
+def cmd_add(args):
+    raw = args.entry
+    if raw is None or raw == "-":
+        raw = sys.stdin.read()
+    entry = parse_entry(raw)
+    if not isinstance(entry, dict):
+        raise SystemExit("error: entry must be a JSON object")
+    entry.setdefault("date", datetime.now().strftime("%Y-%m-%d"))
+    data = load_log(args.path)
+    data.setdefault("entries", []).append(entry)
+    save_log(args.path, data)
+    print("appended entry: %s" % entry.get("title", "(no title)"))
+
+
+def cmd_last(args):
+    data = load_log(args.path)
+    entries = data.get("entries", [])
+    n = args.n if args.n is not None else 5
+    chosen = entries[-n:] if n > 0 else entries
+    if not chosen:
+        print("(no entries)")
+        return
+    for e in chosen:
+        print(fmt_entry(e))
+
+
+def cmd_list(args):
+    data = load_log(args.path)
+    entries = data.get("entries", [])
+    if args.limit:
+        entries = entries[-args.limit:]
+    if args.json:
+        print(json.dumps(entries, ensure_ascii=False, indent=2))
+        return
+    if not entries:
+        print("(no entries)")
+        return
+    for i, e in enumerate(entries, 1):
+        print("%3d. %s" % (i, fmt_entry(e)))
+
+
+def cmd_validate(args):
+    data = load_log(args.path)
+    entries = data.get("entries", [])
+    errors = 0
+    for i, e in enumerate(entries):
+        if not isinstance(e, dict):
+            print("entry %d: not an object" % i)
+            errors += 1
+            continue
+        for field in REQUIRED_FIELDS:
+            if field not in e:
+                print("entry %d: missing required field '%s'" % (i, field))
+                errors += 1
+        typ = e.get("type") or e.get("operation")
+        if typ and typ not in KNOWN_TYPES:
+            print("entry %d: unknown type/operation '%s'" % (i, typ))
+        d = e.get("date", "")
+        try:
+            datetime.strptime(d, "%Y-%m-%d")
+        except (ValueError, TypeError):
+            print("entry %d: bad date '%s' (want YYYY-MM-DD)" % (i, d))
+            errors += 1
+    if errors:
+        raise SystemExit("validation failed: %d error(s) in %d entr%s"
+                         % (errors, len(entries), "y" if len(entries) == 1 else "ies"))
+    print("ok: %d entr%s valid" % (len(entries), "y" if len(entries) == 1 else "ies"))
+
+
+def cmd_summary(args):
+    data = load_log(args.path)
+    entries = data.get("entries", [])
+    print("log: %s" % log_path(args.path))
+    print("total entries: %d" % len(entries))
+    if not entries:
+        return
+    by_type = {}
+    by_status = {}
+    dates = []
+    for e in entries:
+        if not isinstance(e, dict):
+            continue
+        t = e.get("type") or e.get("operation") or "-"
+        by_type[t] = by_type.get(t, 0) + 1
+        s = e.get("status")
+        if s:
+            by_status[s] = by_status.get(s, 0) + 1
+        if e.get("date"):
+            dates.append(e["date"])
+    if dates:
+        print("date range: %s -> %s" % (min(dates), max(dates)))
+    print("by type:")
+    for t, c in sorted(by_type.items(), key=lambda x: -x[1]):
+        print("  %-12s %d" % (t, c))
+    if by_status:
+        print("by status:")
+        for s, c in sorted(by_status.items(), key=lambda x: -x[1]):
+            print("  %-12s %d" % (s, c))
+
+
+def build_parser():
+    p = argparse.ArgumentParser(prog="jsony-reader",
+                                description="append-only wiki log manager")
+    p.add_argument("--path", default=os.getcwd(),
+                   help="project root (default: cwd)")
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    s = sub.add_parser("last", help="show N most recent entries")
+    s.add_argument("n", nargs="?", type=int, default=None)
+    s.set_defaults(func=cmd_last)
+
+    s = sub.add_parser("list", help="list entries")
+    s.add_argument("--limit", type=int)
+    s.add_argument("--json", action="store_true")
+    s.set_defaults(func=cmd_list)
+
+    s = sub.add_parser("add", help="append an entry (arg or stdin)")
+    s.add_argument("entry", nargs="?", default=None)
+    s.set_defaults(func=cmd_add)
+
+    s = sub.add_parser("validate", help="validate schema")
+    s.set_defaults(func=cmd_validate)
+
+    s = sub.add_parser("summary", help="aggregate statistics")
+    s.set_defaults(func=cmd_summary)
+
+    s = sub.add_parser("init", help="create an empty log")
+    s.add_argument("--force", action="store_true")
+    s.set_defaults(func=cmd_init)
+
+    return p
+
+
+def main(argv=None):
+    args = build_parser().parse_args(argv)
+    args.func(args)
+
+
+if __name__ == "__main__":
+    main()

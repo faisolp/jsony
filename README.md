@@ -7,6 +7,8 @@ Pure Python 3, **no dependencies** (stdlib only).
 
 ## Install
 
+### Unix (Linux / macOS)
+
 ```bash
 bash install.sh                       # installs to ~/.claude/scripts/jsony-reader
 # or specify a destination:
@@ -14,6 +16,27 @@ bash install.sh /custom/path
 ```
 
 After install, the binary lives at `~/.claude/scripts/jsony-reader/jsony-reader`.
+
+### Windows
+
+```powershell
+# PowerShell (recommended):
+.\install.ps1                         # installs to %USERPROFILE%\.claude\scripts\jsony-reader
+# or specify a destination:
+.\install.ps1 C:\tools\jsony-reader
+```
+
+You can also **run directly from the repo folder** without installing — the
+`jsony-reader.cmd` batch wrapper is checked in and works immediately:
+
+```cmd
+jsony-reader --path MyProject init
+jsony-reader --path MyProject add '{"title":"hello"}'
+```
+
+> **Tip:** After installing, add the destination directory to your `PATH` so
+> `jsony-reader` works from any terminal. The installer will print the
+> one-liner command to do this.
 
 ## Commands
 

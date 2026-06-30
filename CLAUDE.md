@@ -116,19 +116,14 @@ Agent เป็นเจ้าของ (owns) เลเยอร์ `wiki/` แ
 **Binary/entry:** `~/.claude/scripts/jsony-reader/jsony-reader`
 
 ### Bootstrap (ถ้ายังไม่มี)
-เมื่อเริ่ม session ให้ตรวจว่ามี tool หรือยัง ถ้าไม่มีให้ติดตั้ง:
+เมื่อเริ่ม session ให้ตรวจว่ามี tool หรือยัง ถ้าไม่มีให้ clone แล้วติดตั้งจาก repo:
 ```bash
 if [ ! -x ~/.claude/scripts/jsony-reader/jsony-reader ]; then
-  # วิธีที่ 1: ถ้ามีชุดไฟล์ jsony-reader/ (jsony_core.py, jsony-reader, install.sh) อยู่แล้ว
-  bash /path/to/jsony-reader/install.sh   # ติดตั้งไปที่ ~/.claude/scripts/jsony-reader
-
-  # วิธีที่ 2: bootstrap จาก JSONY parser ต้นฉบับ (Kyle-Helmick/Python-JSONY)
-  # repo นี้ให้แค่ recursive-descent parser (main.py) — ต้อง adapt เป็น jsony_core.py
-  # (raise exception แทน exit(1), เพิ่ม to_python() + ความ tolerant) แล้วเขียน
-  # wrapper CLI `jsony-reader` ครอบ ผูกกับ schema ของ audit.log.json
+  git clone https://github.com/faisolp/jsony.git ~/.claude/scripts/.jsony-src
+  bash ~/.claude/scripts/.jsony-src/install.sh  หรือ install.ps1 # ติดตั้งไปที่ ~/.claude/scripts/jsony-reader
 fi
 ```
-> **⚠️ หมายเหตุ:** repo `Kyle-Helmick/Python-JSONY` เป็น JSONY *parser* เชิงวิชาการ (archived) มีแค่ `main.py` ที่ parse ทีละบรรทัดและ `exit(1)` เมื่อ error — **ไม่ใช่ CLI สำเร็จรูป** ชุดไฟล์ที่ให้มา (`jsony_core.py` + `jsony-reader` + `install.sh`) คือเวอร์ชันที่ adapt parser นั้นให้ใช้เป็น library ได้ + wrapper CLI ครบทั้ง 6 คำสั่ง (pure Python 3, ไม่มี dependency) ใช้ `install.sh` ติดตั้งได้เลย
+> **หมายเหตุ:** source ของ `jsony-reader` (JSONY parser + CLI wrapper) อยู่ที่ `https://github.com/faisolp/jsony` แล้ว — bootstrap คือ clone แล้วรัน `install.sh` ในนั้น ไม่ต้องสร้างใหม่จาก parser ต้นฉบับอีก หาก `~/.claude/scripts/jsony-reader/jsony-reader` มีอยู่แล้วและ executable ให้ข้ามขั้นนี้ไปเลย
 
 ### คำสั่ง
 | คำสั่ง | การทำงาน |
@@ -160,9 +155,3 @@ cat entry.json | ~/.claude/scripts/jsony-reader/jsony-reader --path {Project} ad
 ```
 
 **⚠️ เมื่อต้อง append log ให้ใช้ `jsony-reader add` เสมอ — ห้ามแก้ไข `audit.log.json` โดยตรง**
-
-## 7. Sub Agent & Work สั้น
-เมื่อต้องทำงานเกี่ยวกับ Sub Agent (scout, planner, frontend-dev, backend-dev, fullstack-dev, worker, tester, reviewer, berger) หรือ work สั้น ๆ:
-1. **เริ่มที่ `/Users/faisolphalawon/.pi/agent/prompts/orchestrator.md` เสมอ** — เพื่อดู workflow และ agent ที่มีอยู่
-2. ใช้ orchestrator agent dispatch งาน หรือทำตาม workflow ที่กำหนดใน prompt นั้น
-3. หลังจากเสร็จงาน ให้บันทึก log ตามข้อ 2 (Wiki Maintenance) ถ้ามีการเปลี่ยนแปลงสำคัญ

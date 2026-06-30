@@ -6,6 +6,8 @@
 Project knowledge base — structured wiki for LLM reference.
 Agent เป็นเจ้าของ (owns) เลเยอร์ `wiki/` และ `graph/` ทั้งหมด ส่วน `raw/` เป็นต้นฉบับห้ามแก้ไขเด็ดขาด
 
+> **Platform:** ไฟล์นี้สำหรับ **Unix/macOS** (bash/zsh) — ถ้าใช้ Windows ให้ใช้ `CLAUDE.md (windows)` แทน
+
 ## Project Structure
 
 ```
@@ -38,7 +40,7 @@ Agent เป็นเจ้าของ (owns) เลเยอร์ `wiki/` แ
 
 ### 0. Session Start
 เมื่อเริ่ม session ใหม่ ให้ทำตามลำดับนี้:
-1. **ตรวจสอบ `jsony-reader`** ที่ `~/.claude/scripts/jsony-reader` — ถ้าไม่มีให้ bootstrap ก่อน (ดูหัวข้อ jsony-reader ด้านล่าง)
+1. **ตรวจสอบ `jsony-reader`** ที่ `~/.claude/scripts/jsony-reader/jsony-reader` — ถ้าไม่มีให้ bootstrap ก่อน (ดูหัวข้อ jsony-reader ด้านล่าง)
 2. อ่าน `{Project}/wiki/.system/instructions.md` (กฎเหล็ก) ก่อนเริ่มงานเสมอ
 3. อ่าน 5 log entries ล่าสุดจาก `{Project}/wiki/.system/audit.log.json` เพื่อเข้าใจ context และสถานะล่าสุด:
 ```bash
@@ -58,7 +60,7 @@ Agent เป็นเจ้าของ (owns) เลเยอร์ `wiki/` แ
 - **index.md**: อัปเดตทุกครั้งที่มีการเพิ่ม/ลบ/เปลี่ยนชื่อไฟล์ใน `wiki/`
 - **overview.md**: เป็น living synthesis — อัปเดตให้สะท้อนภาพรวมจากทุก source เสมอ
 - **audit.log.json**: append-only — เพิ่ม entry ทุกครั้งที่มีการเปลี่ยนแปลงสำคัญ
-  ใช้ `jsony-reader` (ที่ `~/.claude/scripts/jsony-reader`) จัดการเท่านั้น (ห้ามแก้ไข audit.log.json โดยตรง):
+  ใช้ `jsony-reader` จัดการเท่านั้น (ห้ามแก้ไข audit.log.json โดยตรง):
   ```bash
   ~/.claude/scripts/jsony-reader/jsony-reader --path {Project} add '{"date":"YYYY-MM-DD","operation":"ingest|fix|update|manual","title":"...","status":"success|partial|failed","notes":"..."}'
   ```
@@ -110,20 +112,22 @@ Agent เป็นเจ้าของ (owns) เลเยอร์ `wiki/` แ
 
 ## jsony-reader (Wiki Log Tool)
 
-`jsony-reader` เป็น CLI tool สำหรับจัดการ `wiki/.system/audit.log.json` โดยใช้ JSONY parser (parse/serialize JSON แบบ tolerant — trailing commas, comments, unquoted keys)
+`jsony-reader` เป็น CLI tool สำหรับจัดการ `wiki/.system/audit.log.json` โดยใช้ JSONY parser (parse/serialize JSON แบบ tolerant — trailing commas, comments, unquoted keys) Pure Python 3, ไม่มี dependency
+Source: `https://github.com/faisolp/jsony`
 
-**ตำแหน่งมาตรฐาน:** `~/.claude/scripts/jsony-reader/`
-**Binary/entry:** `~/.claude/scripts/jsony-reader/jsony-reader`
+**ตำแหน่งมาตรฐาน:** `~/.claude/scripts/jsony-reader/jsony-reader`
 
 ### Bootstrap (ถ้ายังไม่มี)
 เมื่อเริ่ม session ให้ตรวจว่ามี tool หรือยัง ถ้าไม่มีให้ clone แล้วติดตั้งจาก repo:
 ```bash
 if [ ! -x ~/.claude/scripts/jsony-reader/jsony-reader ]; then
   git clone https://github.com/faisolp/jsony.git ~/.claude/scripts/.jsony-src
-  bash ~/.claude/scripts/.jsony-src/install.sh  หรือ install.ps1 # ติดตั้งไปที่ ~/.claude/scripts/jsony-reader
+  bash ~/.claude/scripts/.jsony-src/install.sh   # ติดตั้งไปที่ ~/.claude/scripts/jsony-reader
 fi
 ```
 > **หมายเหตุ:** source ของ `jsony-reader` (JSONY parser + CLI wrapper) อยู่ที่ `https://github.com/faisolp/jsony` แล้ว — bootstrap คือ clone แล้วรัน `install.sh` ในนั้น ไม่ต้องสร้างใหม่จาก parser ต้นฉบับอีก หาก `~/.claude/scripts/jsony-reader/jsony-reader` มีอยู่แล้วและ executable ให้ข้ามขั้นนี้ไปเลย
+>
+> **แนะนำ:** หลัง install แล้ว เพิ่ม `~/.claude/scripts/jsony-reader` เข้า `PATH` (installer จะ print คำสั่งให้) เพื่อเรียก `jsony-reader` ตรง ๆ ได้จากทุก terminal โดยไม่ต้องพิมพ์ path เต็ม
 
 ### คำสั่ง
 | คำสั่ง | การทำงาน |
